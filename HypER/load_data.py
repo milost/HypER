@@ -17,6 +17,7 @@ class Data:
         with open("%s%s.txt" % (data_dir, data_type), "r") as f:
             data = f.read().strip().split("\n")
             data = [i.split() for i in data]
+            # add reverse edges, for example (0, created, 2) ==> (2, created_reverse, 0)
             if reverse:
                 data += [[i[2], i[1]+"_reverse", i[0]] for i in data]
         return data
