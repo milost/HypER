@@ -1,3 +1,5 @@
+from tqdm import tqdm, trange
+
 from load_data import Data
 import numpy as np
 import torch
@@ -134,38 +136,41 @@ class Experiment:
 
         print("Starting training...")
 
-        for it in range(1, self.num_iterations+1):
-            model.train()    
-            losses = []
-            np.random.shuffle(er_vocab_pairs)
-            for j in range(0, len(er_vocab_pairs), self.batch_size):
-                data_batch, targets = self.get_batch(er_vocab, er_vocab_pairs, j)
-                opt.zero_grad()
-                e1_idx = torch.tensor(data_batch[:,0])
-                r_idx = torch.tensor(data_batch[:,1])
-                if self.cuda:
-                    e1_idx = e1_idx.cuda()
-                    r_idx = r_idx.cuda()
-                predictions = model.forward(e1_idx, r_idx)
-                if self.label_smoothing:
-                    targets = ((1.0-self.label_smoothing)*targets) + (1.0/targets.size(1))
-                loss = model.loss(predictions, targets)
-                loss.backward()
-                opt.step()
-            if self.decay_rate:
-                scheduler.step()
-            losses.append(loss.item())
+        with trange(1, self.num_iterations+1) as t:
+            for it in t:
+                t.set_description(f'Epoch {it}')
+                model.train()
+                losses = []
+                np.random.shuffle(er_vocab_pairs)
+                with trange(0, len(er_vocab_pairs), self.batch_size) as t2:
+                    for j in t2:
+                        t2.set_description(f'Progress {j}')
+                        data_batch, targets = self.get_batch(er_vocab, er_vocab_pairs, j)
+                        opt.zero_grad()
+                        e1_idx = torch.tensor(data_batch[:,0])
+                        r_idx = torch.tensor(data_batch[:,1])
+                        if self.cuda:
+                            e1_idx = e1_idx.cuda()
+                            r_idx = r_idx.cuda()
+                        predictions = model.forward(e1_idx, r_idx)
+                        if self.label_smoothing:
+                            targets = ((1.0-self.label_smoothing)*targets) + (1.0/targets.size(1))
+                        loss = model.loss(predictions, targets)
+                        loss.backward()
+                        opt.step()
+                        t2.set_postfix(batch_loss=loss.item())
+                if self.decay_rate:
+                    scheduler.step()
+                losses.append(loss.item())
+                t.set_postfix(avg_loss=np.mean(losses))
 
-            print(it)    
-            print(np.mean(losses))
-
-            model.eval()
-            with torch.no_grad():
-                print("Validation:")
-                self.evaluate(model, d.valid_data)
-                if not it%2:
-                    print("Test:")
-                    self.evaluate(model, d.test_data)
+                model.eval()
+                with torch.no_grad():
+                    print("Validation:")
+                    self.evaluate(model, d.valid_data)
+                    if not it%2:
+                        print("Test:")
+                        self.evaluate(model, d.test_data)
 
 
 if __name__ == '__main__':
