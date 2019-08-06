@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from tqdm import tqdm, trange
 
 from load_data import Data
@@ -67,9 +69,9 @@ class Experiment:
         
         for i in range(0, len(test_data_idxs), self.batch_size):
             data_batch, _ = self.get_batch(er_vocab, test_data_idxs, i)
-            e1_idx = torch.tensor(data_batch[:,0])
-            r_idx = torch.tensor(data_batch[:,1])
-            e2_idx = torch.tensor(data_batch[:,2])
+            e1_idx = torch.tensor(data_batch[:, 0])
+            r_idx = torch.tensor(data_batch[:, 1])
+            e2_idx = torch.tensor(data_batch[:, 2])
             if self.cuda:
                 e1_idx = e1_idx.cuda()
                 r_idx = r_idx.cuda()
@@ -86,7 +88,7 @@ class Experiment:
 
             sort_idxs = sort_idxs.cpu().numpy()
             for j in range(data_batch.shape[0]):
-                rank = np.where(sort_idxs[j]==e2_idx[j])[0][0]
+                rank = np.where(sort_idxs[j]==e2_idx.cpu().numpy()[j])[0][0]
                 ranks.append(rank+1)
 
                 for hits_level in range(10):
@@ -101,15 +103,23 @@ class Experiment:
         print('Mean rank: {0}'.format(np.mean(ranks)))
         print('Mean reciprocal rank: {0}'.format(np.mean(1./np.array(ranks))))
 
+    def save_as_numpy(self, dictionary, file):
+        elements = []
+        for key, value in dictionary.items():
+            elements.append(key)
+        elements = np.array(elements)
+        np.save(file, elements)
 
-
-
-    def train_and_eval(self):
+    def train_and_eval(self, data_dir):
         print("Training the %s model..." % model_name)
         self.entity_idxs = {d.entities[i]:i for i in range(len(d.entities))}
         self.relation_idxs = {d.relations[i]:i for i in range(len(d.relations))}
         train_data_idxs = self.get_data_idxs(d.train_data)
         print("Number of training data points: %d" % len(train_data_idxs))
+
+        # save the mapping of entities and relations to their corresponding index positions
+        self.save_as_numpy(self.entity_idxs, data_dir+'/entities.npy')
+        self.save_as_numpy(self.relation_idxs, data_dir+'/relations.npy')
 
         if model_name.lower() == "hype":
             model = HypE(d, self.ent_vec_dim, self.rel_vec_dim, **self.kwargs)
@@ -172,6 +182,22 @@ class Experiment:
                         print("Test:")
                         self.evaluate(model, d.test_data)
 
+                # create model path if it doesn't exist
+                model_save_path = Path(f'{data_dir}/model')
+                model_save_path.mkdir(parents=True, exist_ok=True)
+
+                # save entire torch model after each epoch
+                torch.save(model.state_dict(),
+                           str(model_save_path / Path(f'{self.model_name.lower()}_model.torch')))
+
+                # create embedding path if it doesn't exist
+                embeddings_save_path = Path(f'{data_dir}/embeddings')
+                embeddings_save_path.mkdir(parents=True, exist_ok=True)
+
+                # save entity and relation embeddings after each epoch
+                torch.save(model.E.weight, str(embeddings_save_path / Path(f'{self.model_name.lower()}_entity_embeddings.torch')))
+                torch.save(model.R.weight, str(embeddings_save_path / Path(f'{self.model_name.lower()}_relation_embeddings.torch')))
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -196,4 +222,4 @@ if __name__ == '__main__':
                             decay_rate=0.99, ent_vec_dim=200, rel_vec_dim=200, cuda=args.cuda,
                             input_dropout=0.2, hidden_dropout=0.3, feature_map_dropout=0.2,
                             in_channels=1, out_channels=32, filt_h=1, filt_w=9, label_smoothing=0.1)
-    experiment.train_and_eval()
+    experiment.train_and_eval(data_dir)
