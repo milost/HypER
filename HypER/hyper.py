@@ -174,13 +174,14 @@ class Experiment:
                 losses.append(loss.item())
                 t.set_postfix(avg_loss=np.mean(losses))
 
-                model.eval()
-                with torch.no_grad():
-                    print("Validation:")
-                    self.evaluate(model, d.valid_data)
-                    if not it%2:
-                        print("Test:")
-                        self.evaluate(model, d.test_data)
+                if d.valid_data and d.test_data:
+                    model.eval()
+                    with torch.no_grad():
+                        print("Validation:")
+                        self.evaluate(model, d.valid_data)
+                        if not it%2:
+                            print("Test:")
+                            self.evaluate(model, d.test_data)
 
                 # create model path if it doesn't exist
                 model_save_path = Path(f'{data_dir}/model')
